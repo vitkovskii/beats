@@ -190,7 +190,7 @@ func (p *Reader) Next() (reader.Message, error) {
 		var logLine logLine
 		err = p.parseLine(&message, &logLine)
 
-		if strings.Contains(err.Error(), "OZON-FIX: JSON offset corrupted") {
+		if err != nil && strings.Contains(err.Error(), "OZON-FIX: JSON offset corrupted") {
 			if (tries > 100) {
 				return message, errors.New("OZON-FIX: Too much retries for JSON corruption fix!")
 			}
