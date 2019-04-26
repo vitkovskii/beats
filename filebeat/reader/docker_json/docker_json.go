@@ -20,7 +20,9 @@ package docker_json
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/elastic/beats/libbeat/logp"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -156,21 +158,24 @@ func (p *Reader) parseDockerJSONLog(message *reader.Message, msg *logLine) error
 }
 
 func (p *Reader) parseLine(message *reader.Message, msg *logLine) error {
-	if p.forceCRI {
-		return p.parseCRILog(message, msg)
-	}
+	//if p.forceCRI {
+	//	return p.parseCRILog(message, msg)
+	//}
 
 	// If froceCRI isn't set, autodetect file type
 	if len(message.Content) > 0 && message.Content[0] == '{' {
 		return p.parseDockerJSONLog(message, msg)
 	}
 
-	return p.parseCRILog(message, msg)
+	logp.Err("OZON-FIX: JSON offset corrupted, trying to fix it " + string(message.Content))
+	return errors.New("OZON-FIX: JSON offset corrupted")
+	//return p.parseCRILog(message, msg)
 }
 
 // Next returns the next line.
 func (p *Reader) Next() (reader.Message, error) {
 	var bytes int
+	var tries int = 0;
 	for {
 		message, err := p.reader.Next()
 
@@ -184,6 +189,17 @@ func (p *Reader) Next() (reader.Message, error) {
 
 		var logLine logLine
 		err = p.parseLine(&message, &logLine)
+
+		if strings.Contains(err.Error(), "OZON-FIX: JSON offset corrupted") {
+			if (tries > 100) {
+				return message, errors.New("OZON-FIX: Too much retries for JSON corruption fix!")
+			}
+
+			logp.Err("OZON-FIX: Fixing corrupted JSON message...")
+			tries++;
+			continue
+		}
+
 		if err != nil {
 			return message, err
 		}
@@ -208,6 +224,10 @@ func (p *Reader) Next() (reader.Message, error) {
 
 		if p.stream != "all" && p.stream != logLine.Stream {
 			continue
+		}
+
+		if (tries > 0) {
+			logp.Err("OZON-FIX: Corrupted JSON fixed with retries %d", tries)
 		}
 
 		return message, err
